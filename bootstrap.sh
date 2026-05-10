@@ -51,7 +51,7 @@ stop_here() {
 
 echo
 log "homelab-strip bootstrap"
-log "repo  : $REPO_URL"
+log "repo  : $REPO_NWO"
 log "target: $REPO_DIR"
 echo
 
