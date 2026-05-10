@@ -108,13 +108,32 @@ if ! tailscale status >/dev/null 2>&1; then
     "Approve this device in https://login.tailscale.com/admin/machines if prompted." \
     "Verify: tailscale status (should list this device)."
 fi
-# Verify the heartbeat host is reachable via MagicDNS
-if ! tailscale ip macmini >/dev/null 2>&1; then
-  stop_here "Tailscale is up, but 'macmini' doesn't resolve via MagicDNS." \
-    "Check the homelab mini is on your tailnet: tailscale status | grep macmini" \
-    "Make sure MagicDNS is enabled: https://login.tailscale.com/admin/dns"
+# Locate the heartbeat host. Prefer MagicDNS; fall back to scanning the peer
+# list (handles devices where 'Use Tailscale DNS' is off or MagicDNS has been
+# poisoned by another resolver). Override the hostname with HOMELAB_STRIP_HOST.
+HEARTBEAT_HOST="${HOMELAB_STRIP_HOST:-macmini}"
+HEARTBEAT_IP="$(tailscale ip "$HEARTBEAT_HOST" 2>/dev/null | head -1 || true)"
+if [[ -z "$HEARTBEAT_IP" ]]; then
+  HEARTBEAT_IP="$(tailscale status 2>/dev/null \
+    | awk -v h="$HEARTBEAT_HOST" '$2==h && $1 ~ /^100\./ {print $1; exit}')"
 fi
-ok "Tailscale signed in; 'macmini' reachable"
+if [[ -z "$HEARTBEAT_IP" ]]; then
+  stop_here "Can't find heartbeat host '$HEARTBEAT_HOST' on your tailnet." \
+    "Check what this Mac sees: tailscale status | grep -i mini" \
+    "Make sure the homelab mini is signed into the SAME tailnet as this device." \
+    "If the mini is named differently on your tailnet, set HOMELAB_STRIP_HOST=<name>."
+fi
+ok "found heartbeat host '$HEARTBEAT_HOST' at $HEARTBEAT_IP"
+
+# Pin client config to the IP so the heartbeat client doesn't depend on
+# MagicDNS at runtime (some Macs have it broken even when the tailnet has
+# MagicDNS enabled).
+mkdir -p "$HOME/.config/homelab-strip"
+CLIENT_CFG="$HOME/.config/homelab-strip/client.json"
+if [[ ! -f "$CLIENT_CFG" ]]; then
+  printf '{"server": "http://%s:9090"}\n' "$HEARTBEAT_IP" > "$CLIENT_CFG"
+  ok "wrote $CLIENT_CFG (server=http://$HEARTBEAT_IP:9090)"
+fi
 
 # --- Step 5: GitHub auth ---
 log "[5/7] GitHub auth"
