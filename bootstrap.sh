@@ -125,6 +125,15 @@ if [[ -z "$HEARTBEAT_IP" ]]; then
 fi
 ok "found heartbeat host '$HEARTBEAT_HOST' at $HEARTBEAT_IP"
 
+# Enable Tailscale SSH on this device so other Macs on the tailnet can drive
+# installs / debugging without needing macOS Remote Login. Idempotent — safe
+# to re-run. ACLs in your Tailscale admin still control who can actually SSH in.
+if ! tailscale set --ssh 2>/dev/null; then
+  warn "couldn't enable Tailscale SSH automatically (may need: sudo tailscale set --ssh)"
+else
+  ok "Tailscale SSH enabled"
+fi
+
 # Pin client config to the IP so the heartbeat client doesn't depend on
 # MagicDNS at runtime (some Macs have it broken even when the tailnet has
 # MagicDNS enabled).
