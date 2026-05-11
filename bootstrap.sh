@@ -125,13 +125,22 @@ if [[ -z "$HEARTBEAT_IP" ]]; then
 fi
 ok "found heartbeat host '$HEARTBEAT_HOST' at $HEARTBEAT_IP"
 
-# Enable Tailscale SSH on this device so other Macs on the tailnet can drive
-# installs / debugging without needing macOS Remote Login. Idempotent — safe
-# to re-run. ACLs in your Tailscale admin still control who can actually SSH in.
-if ! tailscale set --ssh 2>/dev/null; then
-  warn "couldn't enable Tailscale SSH automatically (may need: sudo tailscale set --ssh)"
+# Make this Mac SSH-reachable from the tailnet so future installs and admin
+# can be driven from any other tailnet device. Two mechanisms, belt + braces:
+#  - tailscale set --ssh: works on Linux + non-sandboxed Tailscale; quiet
+#    no-op on the macOS cask build (which is what we install above)
+#  - macOS Remote Login: standard sshd, works regardless of Tailscale build,
+#    accessed via the tailnet IP/MagicDNS so it's only reachable to your fleet
+tailscale set --ssh >/dev/null 2>&1 || true
+if ! sudo -n systemsetup -getremotelogin 2>/dev/null | grep -q "On"; then
+  log "enabling macOS Remote Login (will prompt for sudo)"
+  if sudo systemsetup -setremotelogin on >/dev/null 2>&1; then
+    ok "macOS Remote Login enabled — SSH reachable from the tailnet"
+  else
+    warn "couldn't enable Remote Login automatically; turn it on in System Settings → General → Sharing"
+  fi
 else
-  ok "Tailscale SSH enabled"
+  ok "macOS Remote Login already on (SSH reachable from the tailnet)"
 fi
 
 # Pin client config to the IP so the heartbeat client doesn't depend on
